@@ -71,3 +71,16 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+# 1. Extract
+unzip consortium-banking-system-demo.zip
+cd consortium-banking-system
+
+# 2. Install (3 commands)
+cd contracts && npm install && cd ..
+cd frontend && npm install && cd ..
+cd backend && chmod +x mvnw && ./mvnw clean install -DskipTests && cd ..
+
+# 3. Run (3 terminals)
+# Terminal 1: cd contracts && npx hardhat node
+# Terminal 2: cd backend && ./mvnw spring-boot:run
+# Terminal 3: cd frontend && npm start
