@@ -1,0 +1,493 @@
+I'll generate ready-to-paste Cucumber test files for both controllers. Let me create the feature files and step definitions.Here are all the files you need, ready to paste:
+
+---
+
+## File 1: `src/test/resources/features/message_export.feature`
+
+```gherkin
+Feature: Message Export Controller
+  As a client of the STPA data provisioning service
+  I want to export messages as CSV or ZIP
+  So that I can use the data externally
+
+  Background:
+    Given the application is running
+
+  Scenario: Export messages as CSV for a non-audit index
+    Given I have a valid message search payload with indexName "messages"
+    When I call the exportCsv endpoint
+    Then the response content type should be "application/csv"
+    And the response header "Content-Disposition" should contain "STPA_.csv"
+
+  Scenario: Export messages as CSV for audit index
+    Given I have a valid message search payload with indexName "audit"
+    When I call the exportCsv endpoint
+    Then the response content type should be "application/csv"
+    And the response header "Content-Disposition" should contain "STPA_audit.csv"
+
+  Scenario: Export selected messages with payloads as ZIP
+    Given I have a valid message search payload with indexName "messages"
+    When I call the exportSelectedWithPayloads endpoint
+    Then the response content type should be "application/zip"
+    And the response header "Content-Disposition" should contain "STPA_Selected.zip"
+```
+
+---
+
+## File 2: `src/test/resources/features/stpa_opensearch.feature`
+
+```gherkin
+Feature: StpaOpenSearch Controller
+  As a client of the STPA data provisioning service
+  I want to search messages using various criteria
+  So that I can retrieve relevant data from OpenSearch
+
+  Background:
+    Given the application is running
+
+  Scenario: Search messages by criteria
+    Given I have a valid search request body
+    And the index name is "messages"
+    When I POST to "/api/criteriaQuery"
+    Then the response status code should be 200
+    And the response content type should be "application/json"
+
+  Scenario: Search audit messages by criteria
+    Given I have a valid search request body
+    And the index name is "audit"
+    When I POST to "/api/auditSearch"
+    Then the response status code should be 200
+    And the response content type should be "application/json"
+
+  Scenario: Search linked messages by criteria
+    Given I have a valid search request body
+    And the index name is "linked"
+    When I POST to "/api/linkedSearch"
+    Then the response status code should be 200
+    And the response content type should be "application/json"
+
+  Scenario: Get auto refresh timeout configuration
+    When I GET "/api/autoRefresh"
+    Then the response status code should be 200
+    And the response content type should be "application/json"
+```
+
+---
+
+## File 3: `src/test/java/com/bnpparibas/stpa/stpadataprovisioningservice/cucumber/steps/MessageExportSteps.java`
+
+```java
+package com.bnpparibas.stpa.stpadataprovisioningservice.cucumber.steps;
+
+import com.bnpparibas.stpa.stpadataprovisioningservice.cucumber.CucumberTestContext;
+import com.bnpparibas.stpa.stpadataprovisioningservice.dto.MessageSearchRequestDto;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.cucumber.java.en.And;
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
+import io.restassured.RestAssured;
+import io.restassured.response.Response;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+public class MessageExportSteps {
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private static final String BASE_URL = "http://localhost:8080";
+
+    @Given("the application is running")
+    public void theApplicationIsRunning() {
+        RestAssured.baseURI = BASE_URL;
+        CucumberTestContext.CONTEXT.reset();
+    }
+
+    @Given("I have a valid message search payload with indexName {string}")
+    public void iHaveAValidMessageSearchPayloadWithIndexName(String indexName) throws Exception {
+        MessageSearchRequestDto dto = new MessageSearchRequestDto();
+        dto.setIndexName(indexName);
+        dto.setColumns(List.of("id", "status", "timestamp"));
+        String payload = objectMapper.writeValueAsString(dto);
+        CucumberTestContext.CONTEXT.setPayload(payload);
+    }
+
+    @When("I call the exportCsv endpoint")
+    public void iCallTheExportCsvEndpoint() {
+        String payload = (String) CucumberTestContext.CONTEXT.getPayload();
+        Response response = RestAssured
+                .given()
+                .queryParam("payload", payload)
+                .when()
+                .get(BASE_URL + "/api/exportMessages/exportCsv");
+        CucumberTestContext.CONTEXT.setResponse(response);
+    }
+
+    @When("I call the exportSelectedWithPayloads endpoint")
+    public void iCallTheExportSelectedWithPayloadsEndpoint() {
+        String payload = (String) CucumberTestContext.CONTEXT.getPayload();
+        Response response = RestAssured
+                .given()
+                .queryParam("payload", payload)
+                .when()
+                .post(BASE_URL + "/api/exportMessages/exportSelectedWithPayloads");
+        CucumberTestContext.CONTEXT.setResponse(response);
+    }
+
+    @Then("the response content type should be {string}")
+    public void theResponseContentTypeShouldBe(String expectedContentType) {
+        Response response = CucumberTestContext.CONTEXT.getResponse();
+        assertThat(response.getContentType()).contains(expectedContentType);
+    }
+
+    @And("the response header {string} should contain {string}")
+    public void theResponseHeaderShouldContain(String headerName, String expectedValue) {
+        Response response = CucumberTestContext.CONTEXT.getResponse();
+        String headerValue = response.getHeader(headerName);
+        assertThat(headerValue).contains(expectedValue);
+    }
+}
+```
+
+---
+
+## File 4: `src/test/java/com/bnpparibas/stpa/stpadataprovisioningservice/cucumber/steps/StpaOpenSearchSteps.java`
+
+```java
+package com.bnpparibas.stpa.stpadataprovisioningservice.cucumber.steps;
+
+import com.bnpparibas.stpa.stpadataprovisioningservice.cucumber.CucumberTestContext;
+import com.bnpparibas.stpa.stpadataprovisioningservice.dto.MessageSearchRequestDto;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.cucumber.java.en.And;
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
+import io.restassured.RestAssured;
+import io.restassured.http.ContentType;
+import io.restassured.response.Response;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+public class StpaOpenSearchSteps {
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private static final String BASE_URL = "http://localhost:8080";
+    private String currentIndexName;
+
+    @Given("I have a valid search request body")
+    public void iHaveAValidSearchRequestBody() throws Exception {
+        MessageSearchRequestDto dto = new MessageSearchRequestDto();
+        dto.setIndexName("messages");
+        String body = objectMapper.writeValueAsString(dto);
+        CucumberTestContext.CONTEXT.setPayload(body);
+    }
+
+    @Given("the index name is {string}")
+    public void theIndexNameIs(String indexName) {
+        this.currentIndexName = indexName;
+    }
+
+    @When("I POST to {string}")
+    public void iPostTo(String path) {
+        String body = (String) CucumberTestContext.CONTEXT.getPayload();
+        Response response = RestAssured
+                .given()
+                .contentType(ContentType.JSON)
+                .queryParam("indexName", currentIndexName)
+                .body(body)
+                .when()
+                .post(BASE_URL + path);
+        CucumberTestContext.CONTEXT.setResponse(response);
+    }
+
+    @When("I GET {string}")
+    public void iGetPath(String path) {
+        Response response = RestAssured
+                .given()
+                .when()
+                .get(BASE_URL + path);
+        CucumberTestContext.CONTEXT.setResponse(response);
+    }
+
+    @Then("the response status code should be {int}")
+    public void theResponseStatusCodeShouldBe(int expectedStatus) {
+        Response response = CucumberTestContext.CONTEXT.getResponse();
+        assertThat(response.getStatusCode()).isEqualTo(expectedStatus);
+    }
+
+    @And("the response content type should be {string}")
+    public void theResponseContentTypeShouldBeJson(String expectedContentType) {
+        Response response = CucumberTestContext.CONTEXT.getResponse();
+        assertThat(response.getContentType()).contains(expectedContentType);
+    }
+}
+```
+
+---
+
+## File 5: Unit Tests (pure JUnit/Mockito — no Cucumber needed, **also boosts SonarQube coverage**)
+
+### `src/test/java/com/bnpparibas/stpa/stpadataprovisioningservice/controller/MessageExportControllerTest.java`
+
+```java
+package com.bnpparibas.stpa.stpadataprovisioningservice.controller;
+
+import com.bnpparibas.stpa.stpadataprovisioningservice.dto.*;
+import com.bnpparibas.stpa.stpadataprovisioningservice.service.MessageExportService;
+import com.bnpparibas.stpa.stpadataprovisioningservice.service.StpaopenSearchService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.*;
+import org.springframework.web.client.RestTemplate;
+
+import java.io.ByteArrayOutputStream;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class MessageExportControllerTest {
+
+    @InjectMocks
+    private MessageExportController controller;
+
+    @Mock
+    private RestTemplate restTemplate;
+
+    @Mock
+    private MessageExportService messageExportService;
+
+    @Mock
+    private StpaopenSearchService stpaopenSearchService;
+
+    @Mock
+    private HttpServletResponse httpServletResponse;
+
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void setUp() throws Exception {
+        // Inject @Value field
+        var field = MessageExportController.class.getDeclaredField("stpaopenSearchUrl");
+        field.setAccessible(true);
+        field.set(controller, "http://localhost:9200");
+    }
+
+    // ── exportCsv ──────────────────────────────────────────────────────────
+
+    @Test
+    void exportCsv_nonAuditIndex_writesCsvToResponse() throws Exception {
+        MessageSearchRequestDto dto = new MessageSearchRequestDto();
+        dto.setIndexName("messages");
+        String payload = objectMapper.writeValueAsString(dto);
+
+        byte[] csvBytes = "col1,col2\nval1,val2".getBytes();
+        ResponseEntity<byte[]> fakeResponse = new ResponseEntity<>(csvBytes, HttpStatus.OK);
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(byte[].class)))
+                .thenReturn(fakeResponse);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ServletOutputStream sos = mockServletOutputStream(baos);
+        when(httpServletResponse.getOutputStream()).thenReturn(sos);
+
+        controller.exportCsv(payload, httpServletResponse);
+
+        verify(httpServletResponse).setContentType("application/csv");
+        verify(httpServletResponse).setHeader(eq(HttpHeaders.CONTENT_DISPOSITION), contains("STPA_.csv"));
+        org.assertj.core.api.Assertions.assertThat(baos.toString()).contains("col1,col2");
+    }
+
+    @Test
+    void exportCsv_auditIndex_includesAuditInFilename() throws Exception {
+        MessageSearchRequestDto dto = new MessageSearchRequestDto();
+        dto.setIndexName("audit");
+        String payload = objectMapper.writeValueAsString(dto);
+
+        byte[] csvBytes = "a,b\n1,2".getBytes();
+        ResponseEntity<byte[]> fakeResponse = new ResponseEntity<>(csvBytes, HttpStatus.OK);
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(byte[].class)))
+                .thenReturn(fakeResponse);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ServletOutputStream sos = mockServletOutputStream(baos);
+        when(httpServletResponse.getOutputStream()).thenReturn(sos);
+
+        controller.exportCsv(payload, httpServletResponse);
+
+        verify(httpServletResponse).setHeader(eq(HttpHeaders.CONTENT_DISPOSITION), contains("STPA_audit.csv"));
+    }
+
+    @Test
+    void exportCsv_whenRestTemplateFails_throwsException() throws Exception {
+        MessageSearchRequestDto dto = new MessageSearchRequestDto();
+        dto.setIndexName("messages");
+        String payload = objectMapper.writeValueAsString(dto);
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(byte[].class)))
+                .thenThrow(new RuntimeException("Connection refused"));
+
+        assertThatThrownBy(() -> controller.exportCsv(payload, httpServletResponse))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Connection refused");
+    }
+
+    // ── exportSelectedWithPayloads ─────────────────────────────────────────
+
+    @Test
+    void exportSelectedWithPayloads_setsZipHeadersAndDelegates() throws Exception {
+        MessageSearchRequestDto dto = new MessageSearchRequestDto();
+        dto.setIndexName("messages");
+        dto.setColumns(List.of("id", "status"));
+        String payload = objectMapper.writeValueAsString(dto);
+
+        MessageSearchResponse searchResponse = new MessageSearchResponse();
+        // jsonNode returns empty array node so convertValue gives empty list
+        searchResponse.setJsonNode(objectMapper.createArrayNode());
+
+        when(stpaopenSearchService.searchByCriteria(any(), eq("messages")))
+                .thenReturn(searchResponse);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ServletOutputStream sos = mockServletOutputStream(baos);
+        when(httpServletResponse.getOutputStream()).thenReturn(sos);
+
+        controller.exportSelectedWithPayloads(payload, httpServletResponse);
+
+        verify(httpServletResponse).setContentType("application/zip");
+        verify(httpServletResponse).setHeader(eq(HttpHeaders.CONTENT_DISPOSITION), contains("STPA_Selected.zip"));
+        verify(messageExportService).exportSelectedWithPayloads(anyList(), eq(List.of("id", "status")), eq(httpServletResponse));
+    }
+
+    // ── Helper ─────────────────────────────────────────────────────────────
+
+    private ServletOutputStream mockServletOutputStream(ByteArrayOutputStream baos) throws Exception {
+        return new ServletOutputStream() {
+            @Override public boolean isReady() { return true; }
+            @Override public void setWriteListener(jakarta.servlet.WriteListener wl) {}
+            @Override public void write(int b) { baos.write(b); }
+            @Override public void write(byte[] b) throws java.io.IOException { baos.write(b); }
+            @Override public void write(byte[] b, int off, int len) { baos.write(b, off, len); }
+        };
+    }
+}
+```
+
+---
+
+### `src/test/java/com/bnpparibas/stpa/stpadataprovisioningservice/controller/StpaopenSearchControllerTest.java`
+
+```java
+package com.bnpparibas.stpa.stpadataprovisioningservice.controller;
+
+import com.bnpparibas.stpa.stpadataprovisioningservice.dto.MessageSearchRequestDto;
+import com.bnpparibas.stpa.stpadataprovisioningservice.dto.MessageSearchResponse;
+import com.bnpparibas.stpa.stpadataprovisioningservice.service.StpaopenSearchService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class StpaopenSearchControllerTest {
+
+    @InjectMocks
+    private StpaopenSearchController controller;
+
+    @Mock
+    private StpaopenSearchService stpaopenSearchService;
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(controller, "autoRefreshTimeout", "30");
+    }
+
+    @Test
+    void criteriaQuery_returnsOkWithBody() throws Exception {
+        MessageSearchRequestDto request = new MessageSearchRequestDto();
+        MessageSearchResponse expected = new MessageSearchResponse();
+        when(stpaopenSearchService.searchByCriteria(request, "messages")).thenReturn(expected);
+
+        ResponseEntity<MessageSearchResponse> result =
+                controller.getTransactionMessage(request, "messages");
+
+        assertThat(result.getStatusCodeValue()).isEqualTo(200);
+        assertThat(result.getBody()).isEqualTo(expected);
+        verify(stpaopenSearchService).searchByCriteria(request, "messages");
+    }
+
+    @Test
+    void auditSearch_returnsOkWithBody() throws Exception {
+        MessageSearchRequestDto request = new MessageSearchRequestDto();
+        MessageSearchResponse expected = new MessageSearchResponse();
+        when(stpaopenSearchService.searchByCriteria(request, "audit")).thenReturn(expected);
+
+        ResponseEntity<MessageSearchResponse> result =
+                controller.getAuditMessage(request, "audit");
+
+        assertThat(result.getStatusCodeValue()).isEqualTo(200);
+        assertThat(result.getBody()).isEqualTo(expected);
+    }
+
+    @Test
+    void linkedSearch_returnsOkWithBody() throws Exception {
+        MessageSearchRequestDto request = new MessageSearchRequestDto();
+        MessageSearchResponse expected = new MessageSearchResponse();
+        when(stpaopenSearchService.searchByCriteria(request, "linked")).thenReturn(expected);
+
+        ResponseEntity<MessageSearchResponse> result =
+                controller.getLinkedMessages(request, "linked");
+
+        assertThat(result.getStatusCodeValue()).isEqualTo(200);
+        assertThat(result.getBody()).isEqualTo(expected);
+    }
+
+    @Test
+    void autoRefresh_returnsConfiguredTimeout() {
+        ResponseEntity<String> result = controller.getAutoRefreshTimeout();
+
+        assertThat(result.getStatusCodeValue()).isEqualTo(200);
+        assertThat(result.getBody()).isEqualTo("30");
+    }
+}
+```
+
+---
+
+## Summary of what each file does
+
+**Feature files** (`.feature`) are plain English Gherkin scenarios — Cucumber reads them and matches each line to a step method via `@Given/@When/@Then` annotations.
+
+**Step files** (`*Steps.java`) contain the actual Java code that runs for each Gherkin line. They use RestAssured to make real HTTP calls against the running Spring Boot app and use `CucumberTestContext` (your existing enum) to pass data between steps.
+
+**Unit test files** (`*ControllerTest.java`) use Mockito to isolate the controller from real services — these are the most reliable for SonarQube line coverage since they run fast and don't need infrastructure.
+
+**Key points to adapt:**
+- Replace `http://localhost:8080` with your actual test port if different from 8080
+- Ensure `MessageSearchRequestDto` has setters for `indexName` and `columns` (add `@Data` or manual setters if missing)
+- Ensure `MessageSearchResponse` has a `setJsonNode()` setter — add if missing
+- The Cucumber tests need the full Spring context running, so they'll only pass if OpenSearch/dependencies are mocked via `@Profile("test")`
